@@ -85,6 +85,10 @@ canvas{display:block;border:1px solid var(--c-border2);border-radius:4px;
 .char-card.batter-card{border-color:rgba(251,146,60,0.5);background:rgba(20,10,0,0.9);}
 .char-card.batter-card:hover,.char-card.batter-card.selected{border-color:#fb923c;box-shadow:0 8px 24px rgba(251,146,60,0.25);}
 .char-card.batter-card .char-name{color:#fb923c;}
+.tag-gunner{background:rgba(156,163,175,0.2);color:#d1d5db;border:1px solid rgba(156,163,175,0.3);}
+.char-card.gunner-card{border-color:rgba(156,163,175,0.4);background:rgba(10,12,16,0.95);}
+.char-card.gunner-card:hover,.char-card.gunner-card.selected{border-color:#d1d5db;box-shadow:0 8px 24px rgba(200,210,220,0.2);}
+.char-card.gunner-card .char-name{color:#d1d5db;}
 
 /* Level Up */
 #luscreen{z-index:50;}
@@ -287,7 +291,7 @@ canvas{display:block;border:1px solid var(--c-border2);border-radius:4px;
     <button class="btn" onclick="showCharSelect()">게임 시작</button>
     <div style="margin-top:14px;font-family:'Rajdhani',sans-serif;font-size:10px;font-weight:500;color:var(--c-text2);letter-spacing:2px;text-transform:uppercase;text-align:center;line-height:2;">
       15분 생존 · 5분마다 보스 · 클리어 시 코인 획득<br>
-      <span style="color:var(--c-evo2)">만렙+아이템 → 진화</span> · <span style="color:var(--c-miner)">전사 · 광부 · </span><span style="color:#fb923c">타자</span> 선택
+      <span style="color:var(--c-evo2)">만렙+아이템 → 진화</span> · <span style="color:var(--c-miner)">전사 · 광부 · </span><span style="color:#fb923c">타자</span> · <span style="color:#d1d5db">샷건맨</span>
     </div>
   </div>
 
@@ -316,6 +320,13 @@ canvas{display:block;border:1px solid var(--c-border2);border-radius:4px;
         <div class="char-desc">야구방망이로 적을 날려버려<br>강타 & 넉백 특화</div>
         <div class="char-stats">HP 120 · SPD 125<br>시작 무기: 야구방망이</div>
         <div class="char-tag tag-batter">BATTER</div>
+      </div>
+      <div class="char-card gunner-card" id="cc-gunner" onclick="selectChar('gunner')">
+        <div class="char-icon">🔫</div>
+        <div class="char-name">샷건맨</div>
+        <div class="char-desc">샷건으로 근거리 적 초토화<br>탄환 수·쿨타임 특화</div>
+        <div class="char-stats">HP 95 · SPD 130<br>시작 무기: 샷건</div>
+        <div class="char-tag tag-gunner">GUNNER</div>
       </div>
     </div>
     <div class="sep"></div>
@@ -349,7 +360,7 @@ canvas{display:block;border:1px solid var(--c-border2);border-radius:4px;
     </div>
     <div class="shop-grid" id="shop-grid"></div>
     <div class="sep"></div>
-    <button class="btn btn-secondary" onclick="hideOv('shopscreen');showOv('stage-select')">← 뒤로</button>
+    <button class="btn btn-secondary" onclick="hideOv('shopscreen');renderStageGrid();showOv('stage-select')">← 뒤로</button>
   </div>
 
   <!-- Chest Result -->
@@ -434,6 +445,7 @@ let player;
 let enemies = [], projectiles = [], xpGems = [], dmgNums = [], particles = [];
 let orbBurstQueue = [], orbBurstTimer = 0, spawnTimer = 0;
 let nextBossTime = 300, bossWarningTimer = 0, activeBoss = null;
+let finalBossSpawned = false;
 let currentStage = 1;
 let isBossPhase = false;
 let floorItems = [];
@@ -527,6 +539,17 @@ const CHARACTERS = {
     exclusiveWeapons:['bat'],
     bannedWeapons:['pickaxe','goldenPick','orb','meteor'],
   },
+  gunner: {
+    name:'샷건맨', icon:'🔫',
+    maxHp:95, spd:130, pickupRange:70,
+    startWeapon:'shotgun',
+    dmgMul:1.0, cdrMul:0.95,
+    color:'#d1d5db', badgeColor:'#f3f4f6',
+    desc:'샷건 자동조준, 탄환수+쿨타임 강화',
+    shotgunBonus: true,
+    exclusiveWeapons:['shotgun'],
+    bannedWeapons:['pickaxe','goldenPick','bat','homerun'],
+  },
 };
 
 // ══════════════════════════════════════════════════════
@@ -574,6 +597,7 @@ const WEAPON_DATA = {
   arrow:  {name:'마법 화살',  icon:'🏹', maxLv:5, cdBase:0.6,  dmgBase:30,  spdBase:400, desc:l=>`화살 ${1+Math.floor(l/2)}발 · 피해 ${30+l*12}`},
   ice:    {name:'빙결 창',    icon:'🧊', maxLv:5, cdBase:1.8,  dmgBase:60,  spdBase:260, desc:l=>`빙결 ${l}초 · 피해 ${60+l*18}`},
   bat:    {name:'야구방망이', icon:'🏏', maxLv:5, cdBase:1.2,  dmgBase:60,  spdBase:0,   desc:l=>`부채꼴 강타 · 피해 ${60+l*20} · 넉백`},
+  shotgun:{name:'샷건',      icon:'🔫', maxLv:5, cdBase:1.6,  dmgBase:28,  spdBase:500, desc:l=>`탄환 ${3+l}발 · 피해 ${28+l*8}×${3+l} · 자동조준`},
   meteor: {name:'운석 소환',  icon:'☄️', maxLv:1, cdBase:1.2,  dmgBase:0, spdBase:0, evolved:true, desc:()=>'운석이 쏟아진다'},
   storm:  {name:'폭풍 오라',  icon:'🌪️', maxLv:1, cdBase:0.25, dmgBase:0, spdBase:0, evolved:true, desc:()=>'넓은 폭풍 오라'},
   divine: {name:'신성 십자',  icon:'🌟', maxLv:1, cdBase:1.6,  dmgBase:0, spdBase:0, evolved:true, desc:()=>'8방향 신성한 빛'},
@@ -583,6 +607,7 @@ const WEAPON_DATA = {
   tempest:{name:'폭풍 화살',  icon:'🌬️', maxLv:1, cdBase:0.3,  dmgBase:0, spdBase:0, evolved:true, desc:()=>'화살 폭풍 난사'},
   glacier:{name:'빙하 폭발',  icon:'❄️', maxLv:1, cdBase:2.0,  dmgBase:0, spdBase:0, evolved:true, desc:()=>'화면 전체 빙결'},
   homerun:{name:'홈런포',    icon:'💫', maxLv:1, cdBase:0.9,  dmgBase:0, spdBase:0, evolved:true, desc:()=>'전방위 초강타 폭발'},
+  minigun:{name:'기관총',    icon:'💥', maxLv:1, cdBase:0.05, dmgBase:0, spdBase:0, evolved:true, desc:()=>'쿨타임 없는 연속 사격'},
   goldenPick:{name:'황금 곡괭이',icon:'✨',maxLv:1,cdBase:0.9,dmgBase:0,spdBase:0,evolved:true,desc:()=>'3개 황금 부메랑 각개격파'},
 };
 
@@ -597,6 +622,7 @@ const ACC_DATA = {
   quiver:    {name:'마법 화살통',   icon:'🪄', desc:'마법 화살 진화 · 쿨타임 -10%',          passive:{cdr:0.10}},
   permafrost:{name:'영구 동결석',   icon:'🧊', desc:'빙결 창 진화 · 수집 범위 +25',          passive:{pickup:25}},
   slugger:   {name:'슬러거 장갑', icon:'🧤', desc:'방망이 진화 · 공격력 +18%',              passive:{dmg:0.18}},
+  ammobox:   {name:'탄약 상자',   icon:'📦', desc:'샷건 진화 → 기관총 · 쿨타임 -10%',       passive:{cdr:0.10}},
   goldvein:  {name:'황금 광맥',     icon:'🥇', desc:'곡괭이 진화 · 코인 +50% · 공격력 +10%', passive:{dmg:0.10}},
 };
 
@@ -611,6 +637,7 @@ const EVO_RECIPES = [
   {weapon:'arrow',   acc:'quiver',     result:'tempest',    name:'폭풍 화살',   icon:'🌬️'},
   {weapon:'ice',     acc:'permafrost', result:'glacier',    name:'빙하 폭발',   icon:'❄️'},
   {weapon:'bat',     acc:'slugger',    result:'homerun',    name:'홈런포',      icon:'💫'},
+  {weapon:'shotgun', acc:'ammobox',    result:'minigun',    name:'기관총',      icon:'💥'},
   {weapon:'pickaxe', acc:'goldvein',   result:'goldenPick', name:'황금 곡괭이', icon:'✨'},
 ];
 
@@ -626,6 +653,7 @@ const UPGRADES = [
   {id:'arrow',weapon:true,name:'마법 화살',icon:'🏹'},
   {id:'ice',weapon:true,name:'빙결 창',icon:'🧊'},
   {id:'bat',weapon:true,name:'야구방망이',icon:'🏏'},
+  {id:'shotgun',weapon:true,name:'샷건',icon:'🔫'},
   {id:'grimoire',accessory:true,name:'마법서',icon:'📖'},
   {id:'whetstone',accessory:true,name:'숫돌',icon:'🪨'},
   {id:'rune',accessory:true,name:'어둠의 룬',icon:'🔯'},
@@ -636,6 +664,7 @@ const UPGRADES = [
   {id:'quiver',accessory:true,name:'마법 화살통',icon:'🪄'},
   {id:'permafrost',accessory:true,name:'영구 동결석',icon:'🧊'},
   {id:'slugger',accessory:true,name:'슬러거 장갑',icon:'🧤'},
+  {id:'ammobox',accessory:true,name:'탄약 상자',icon:'📦'},
   {id:'goldvein',accessory:true,name:'황금 광맥',icon:'🥇'},
   {id:'maxhp',name:'생명력 강화',icon:'❤️'},
   {id:'speed',name:'이동 속도',icon:'💨'},
@@ -665,12 +694,12 @@ const ENEMY_TYPES = [
 //  BOSS TYPES
 // ══════════════════════════════════════════════════════
 const BOSS_TYPES = [
-  {name:'리치',   icon:'💀', color:'#9B59B6', size:36, hp:2000,  spd:55, xp:200, dmg:55,  shape:'circle', atkCd:2.5, atkPatterns:['single','spread']},
-  {name:'드래곤', icon:'🐉', color:'#E74C3C', size:44, hp:4000,  spd:48, xp:350, dmg:75,  shape:'circle', atkCd:2.0, atkPatterns:['spread','burst']},
-  {name:'악마왕', icon:'👹', color:'#C0392B', size:40, hp:6000,  spd:60, xp:500, dmg:95,  shape:'circle', atkCd:1.8, atkPatterns:['spiral','burst']},
-  {name:'공허신', icon:'🌑', color:'#2C3E50', size:50, hp:10000, spd:52, xp:800, dmg:115, shape:'blob', alpha:0.85, atkCd:1.5, atkPatterns:['void','spread','spiral']},
-  {name:'심연',   icon:'🕳️', color:'#1A1A2E', size:56, hp:16000, spd:58, xp:1200,dmg:140, shape:'blob', alpha:0.9,  atkCd:1.2, atkPatterns:['void','burst','spiral']},
-  {name:'암흑신', icon:'⚫', color:'#0D0D0D', size:62, hp:25000, spd:64, xp:2000,dmg:180, shape:'circle',atkCd:0.9, atkPatterns:['void','spread','burst','spiral']},
+  {name:'리치',   icon:'💀', color:'#9B59B6', size:38, hp:4000,  spd:65, xp:200, dmg:75,  shape:'circle', atkCd:2.0, atkPatterns:['single','spread']},
+  {name:'드래곤', icon:'🐉', color:'#E74C3C', size:46, hp:8000,  spd:58, xp:350, dmg:100, shape:'circle', atkCd:1.7, atkPatterns:['spread','burst']},
+  {name:'악마왕', icon:'👹', color:'#C0392B', size:42, hp:14000, spd:72, xp:500, dmg:130, shape:'circle', atkCd:1.4, atkPatterns:['spiral','burst']},
+  {name:'공허신', icon:'🌑', color:'#2C3E50', size:52, hp:22000, spd:64, xp:800, dmg:160, shape:'blob', alpha:0.85, atkCd:1.1, atkPatterns:['void','spread','spiral']},
+  {name:'심연',   icon:'🕳️', color:'#1A1A2E', size:58, hp:36000, spd:70, xp:1200,dmg:195, shape:'blob', alpha:0.9,  atkCd:0.9, atkPatterns:['void','burst','spiral']},
+  {name:'암흑신', icon:'⚫', color:'#0D0D0D', size:65, hp:60000, spd:78, xp:2000,dmg:250, shape:'circle',atkCd:0.65,atkPatterns:['void','spread','burst','spiral']},
 ];
 
 const BOSS_ATK_PATTERNS = {
@@ -909,6 +938,7 @@ function launchStage(stageId){
   kills=0; gameTime=0; lastTime=0;
   nextBossTime=300; bossWarningTimer=0; activeBoss=null;
   isBossPhase=false; floorItems=[]; floorItemSpawnTimer=15;
+  finalBossSpawned=false;
   weaponDmgTracker={};
   totalDmgDealt=0;
 
@@ -1041,6 +1071,7 @@ function initPlayer(stg){
     bonusXP: ch.bonusXP || 1.0,
     isMiner: selectedChar === 'miner',
     isHunter: selectedChar === 'hunter',
+    isGunner: selectedChar === 'gunner',
   };
   player.weapons[ch.startWeapon] = 1;
   player.weaponCooldowns[ch.startWeapon] = 0;
@@ -1164,6 +1195,28 @@ function spawnBoss(){
   enemies.push(boss); activeBoss=boss;
   SFX.bossSpawn();
   nextBossTime=gameTime+300;
+}
+
+function spawnFinalBoss(){
+  enemies=enemies.filter(e=>e.isBoss);
+  projectiles=[]; bossProjectiles=[]; isBossPhase=true;
+  const stg=STAGES[currentStage-1];
+  // 최강 보스: 암흑신 고정, 스탯 1.5배 강화
+  const t=BOSS_TYPES[BOSS_TYPES.length-1];
+  const mul=stg.diffMul*1.5;
+  const a=Math.random()*Math.PI*2;
+  const boss={
+    x:player.x+Math.cos(a)*420, y:player.y+Math.sin(a)*420,
+    type:t, hp:t.hp*mul, maxHp:t.hp*mul,
+    spd:Math.min(t.spd*1.2*stg.diffMul*0.7, player.spd*0.9),
+    xp:Math.round(t.xp*stg.diffMul*2), dmg:t.dmg*mul*0.7,
+    hitFlash:0, isBoss:true,
+    atkCd:t.atkCd*0.7, atkTimer:1.0, patternIdx:0,
+    isFinalBoss:true,
+  };
+  enemies.push(boss); activeBoss=boss;
+  SFX.bossSpawn();
+  showNotif(`⚠️ ⚫ 암흑신 강림! ⚠️ 격파하면 클리어!`,'#ff0044');
 }
 
 function showBossWarning(bossType){
@@ -1357,6 +1410,8 @@ function fireWeapons(dt){
       case'ice':    SFX.iceShoot();   fireIce(wlv,wd);    break;
       case'bat':    SFX.whipCrack();  fireBat(wlv,wd);    break;
       case'homerun':SFX.whipCrack();  fireHomerun();  break;
+      case'shotgun':SFX.shotgunBlast();fireShotgun(wlv,wd);break;
+      case'minigun':SFX.minigunFire(); fireMinigun();  break;
       case'meteor': SFX.meteorFall(); fireMeteor();  break;
       case'storm':  SFX.auraHum();    fireStorm();   break;
       case'divine': SFX.crossShoot(); fireDivine();  break;
@@ -1492,6 +1547,66 @@ function fireHomerun(){
       color:i%2===0?'#fb923c':'#fbbf24',type:'dot'});
   }
   particles.push({x:player.x,y:player.y,r:0,maxR:range,life:0.5,maxLife:0.5,type:'nova',color:'rgba(251,146,60,0.6)'});
+}
+
+// ── 샷건: 가장 가까운 적 자동조준, 산탄 발사
+function fireShotgun(wlv, wd){
+  const pellets = 3 + wlv;          // Lv0=3발, 최대 Lv4=7발
+  const dmg = (wd.dmgBase + wlv * 8) * player.dmgMul;
+  const spd = wd.spdBase;
+  const range = 320 + wlv * 20;     // 유효 사거리 (life로 제한)
+  const life = range / spd;
+
+  // 자동조준: 화면 안 가장 가까운 적
+  const target = enemies
+    .filter(e => Math.abs(e.x-player.x)<W*0.5 && Math.abs(e.y-player.y)<H*0.5)
+    .sort((a,b) => dist(player.x,player.y,a.x,a.y)-dist(player.x,player.y,b.x,b.y))[0];
+
+  const baseAngle = target
+    ? Math.atan2(target.y-player.y, target.x-player.x)
+    : (player.facing > 0 ? 0 : Math.PI);
+
+  const spread = 0.28 + wlv * 0.02;  // 산탄 퍼짐
+  for(let i = 0; i < pellets; i++){
+    const t = pellets === 1 ? 0 : (i/(pellets-1) - 0.5);
+    const angle = baseAngle + t * spread * 2;
+    projectiles.push({
+      x: player.x, y: player.y,
+      vx: Math.cos(angle)*spd, vy: Math.sin(angle)*spd,
+      dmg, r: 5, life, pierce: 1,
+      color: '#ffe066', glow: 'rgba(255,224,102,0.8)', type: 'bolt',
+    });
+  }
+  // 총구 화염 파티클
+  const muzzleX = player.x + Math.cos(baseAngle)*20;
+  const muzzleY = player.y + Math.sin(baseAngle)*20;
+  for(let i=0; i<6; i++){
+    const a = baseAngle + (Math.random()-0.5)*spread*2;
+    particles.push({x:muzzleX, y:muzzleY, vx:Math.cos(a)*180, vy:Math.sin(a)*180,
+      life:0.12, maxLife:0.12, r:3+Math.random()*3, color:'#ffcc44', type:'dot'});
+  }
+}
+
+// ── 기관총(진화): 쿨타임 극소, 자동조준 단발 고속 연사
+function fireMinigun(){
+  const target = enemies
+    .filter(e => Math.abs(e.x-player.x)<W*0.5 && Math.abs(e.y-player.y)<H*0.5)
+    .sort((a,b) => dist(player.x,player.y,a.x,a.y)-dist(player.x,player.y,b.x,b.y))[0];
+  const baseAngle = target
+    ? Math.atan2(target.y-player.y, target.x-player.x)
+    : (player.facing > 0 ? 0 : Math.PI);
+  const spread = (Math.random()-0.5)*0.08;
+  const a = baseAngle + spread;
+  projectiles.push({
+    x: player.x, y: player.y,
+    vx: Math.cos(a)*600, vy: Math.sin(a)*600,
+    dmg: 35 * player.dmgMul, r: 4, life: 0.7, pierce: 2,
+    color: '#ff4466', glow: 'rgba(255,68,102,0.85)', type: 'bolt',
+  });
+  // 총구 스파크
+  particles.push({x:player.x+Math.cos(a)*18, y:player.y+Math.sin(a)*18,
+    vx:Math.cos(a)*120, vy:Math.sin(a)*120,
+    life:0.08, maxLife:0.08, r:3, color:'#ff8888', type:'dot'});
 }
 function fireTempest(){ const target=nearestEnemy(player.x,player.y),baseA=target?Math.atan2(target.y-player.y,target.x-player.x):0; for(let i=0;i<5;i++){const a=baseA+(i-2)*0.22;projectiles.push({x:player.x,y:player.y,vx:Math.cos(a)*480,vy:Math.sin(a)*480,dmg:180,r:6,color:'#CCFFCC',life:1.5,pierce:99,type:'bolt',glow:'rgba(180,255,180,0.8)'}); } }
 function fireGlacier(){ for(let e of enemies){ if(dist(player.x,player.y,e.x,e.y)<350){ hitEnemy(e,200); e.spd*=0.3; setTimeout(()=>{ if(e) e.spd/=0.3; },2000); } } particles.push({x:player.x,y:player.y,r:0,maxR:350,life:0.7,maxLife:0.7,type:'nova',color:'#88CCFF'}); }
@@ -1645,6 +1760,8 @@ const SFX={
   boltStrike(){ playNoise({duration:0.06,volume:0.45,filterFreq:6000,filterType:'highpass'}); playTone({freq:120,freqSlide:60,type:'sawtooth',duration:0.08,volume:0.3,attack:0.001,decay:0.03,sustain:0.1,release:0.04}); },
   novaExplode(){ playNoise({duration:0.25,volume:0.4,filterFreq:800,filterType:'lowpass'}); playTone({freq:100,freqSlide:50,type:'sawtooth',duration:0.25,volume:0.28,attack:0.01,decay:0.1,sustain:0.2,release:0.12}); },
   whipCrack(){ playNoise({duration:0.08,volume:0.5,filterFreq:4000,filterType:'bandpass'}); playTone({freq:300,freqSlide:800,type:'sawtooth',duration:0.07,volume:0.25,attack:0.001,decay:0.03,sustain:0.1,release:0.03}); },
+  shotgunBlast(){ playNoise({duration:0.14,volume:0.7,filterFreq:1200,filterType:'lowpass'}); playTone({freq:90,freqSlide:40,type:'sawtooth',duration:0.14,volume:0.4,attack:0.001,decay:0.05,sustain:0.1,release:0.06}); },
+  minigunFire(){ playNoise({duration:0.04,volume:0.35,filterFreq:2500,filterType:'bandpass'}); },
   arrowShoot(){ playTone({freq:700,freqSlide:500,type:'sawtooth',duration:0.09,volume:0.18,attack:0.002,decay:0.04,sustain:0.15,release:0.04}); },
   iceShoot(){ playTone({freq:900,freqSlide:600,type:'sine',duration:0.14,volume:0.2,attack:0.005,decay:0.05,sustain:0.3,release:0.07,detune:-10}); playTone({freq:1100,freqSlide:700,type:'sine',duration:0.14,volume:0.1,attack:0.01,decay:0.05,sustain:0.2,release:0.07,delay:0.02}); },
   meteorFall(){ playNoise({duration:0.3,volume:0.45,filterFreq:400,filterType:'lowpass'}); playTone({freq:80,freqSlide:40,type:'sawtooth',duration:0.3,volume:0.35,attack:0.01,decay:0.1,sustain:0.4,release:0.15}); },
@@ -1762,11 +1879,15 @@ function rerollCards(){
 function buildUpgradePool(){
   const pool=[];
   const all=[...UPGRADES].sort(()=>Math.random()-0.5);
-  const weaponCount=Object.keys(player.weapons).filter(w=>!WEAPON_DATA[w]?.evolved).length;
+  // 진화 무기 포함 전체 무기 수
+  const weaponCount=Object.keys(player.weapons).length;
   const accCount=Object.keys(player.accessories).filter(k=>!k.endsWith('_evolved')).length;
   const charDef = selectedChar ? CHARACTERS[selectedChar] : null;
   const bannedWeapons = charDef ? (charDef.bannedWeapons||[]) : [];
-  // 사냥꾼은 채찍/회오리 계열이 풀 앞쪽에 오도록 정렬 보정
+  // 진화로 이미 사용된 원본 무기 목록 (결과 무기가 현재 있으면 원본은 제안 불가)
+  const evolvedOrigins = new Set(
+    EVO_RECIPES.filter(r=>player.weapons[r.result]).map(r=>r.weapon)
+  );
   const isHunterChar = selectedChar === 'hunter';
   if(isHunterChar){
     all.sort((a,b)=>{
@@ -1780,6 +1901,8 @@ function buildUpgradePool(){
     if(pool.length>=3) break;
     if(up.weapon){
       const wd=WEAPON_DATA[up.id]; if(!wd||wd.evolved) continue;
+      // 진화로 이미 사용된 원본은 제안 안 함
+      if(evolvedOrigins.has(up.id)) continue;
       if(bannedWeapons.includes(up.id) && !player.weapons[up.id]) continue;
       const wlv=player.weapons[up.id];
       if(wlv){ if(wlv<wd.maxLv) pool.push({...up,desc:wd.desc(wlv),name:up.name+` Lv.${wlv+1}`}); }
@@ -1797,7 +1920,7 @@ function buildUpgradePool(){
 
 function applyUpgrade(up){
   if(up.weapon){
-    const weaponCount=Object.keys(player.weapons).filter(w=>!WEAPON_DATA[w]?.evolved).length;
+    const weaponCount=Object.keys(player.weapons).length;
     const alreadyHas=!!player.weapons[up.id];
     if(!alreadyHas&&weaponCount>=MAX_WEAPONS){ showNotif('⚠️ 무기 슬롯이 가득 찼습니다 (최대 5개)','#ff6b63'); return; }
     if(!player.weapons[up.id]){ player.weapons[up.id]=1; player.weaponCooldowns[up.id]=0; }
@@ -1829,7 +1952,7 @@ function applyUpgrade(up){
 // ══════════════════════════════════════════════════════
 function updateSlots(){
   const container=document.getElementById('slots'); container.innerHTML='';
-  const wCnt=Object.keys(player.weapons).filter(w=>!WEAPON_DATA[w]?.evolved).length;
+  const wCnt=Object.keys(player.weapons).length;
   const aCnt=Object.keys(player.accessories).filter(k=>!k.endsWith('_evolved')).length;
   const hdr=document.createElement('div');
   hdr.style.cssText='font-family:Rajdhani,sans-serif;font-size:8px;font-weight:700;color:rgba(136,153,187,0.5);letter-spacing:1px;text-align:right;padding:0 7px 2px;';
@@ -1917,7 +2040,10 @@ function update(dt){
     showBossWarning(BOSS_TYPES[bossIdx]);
   }
   if(bossWarningTimer>0){ bossWarningTimer-=dt; if(bossWarningTimer<=0&&gameTime>=nextBossTime) spawnBoss(); }
-  if(activeBoss&&activeBoss.hp<=0) activeBoss=null;
+  if(activeBoss&&activeBoss.hp<=0){
+    if(activeBoss.isFinalBoss){ activeBoss=null; stageClear(); return; }
+    activeBoss=null;
+  }
   updateBossAttacks(dt);
 
   for(let i=enemies.length-1;i>=0;i--){
@@ -1972,10 +2098,26 @@ function update(dt){
   for(let i=dmgNums.length-1;i>=0;i--){ const d=dmgNums[i]; d.life-=dt; d.y+=d.vy*dt; if(d.life<=0) dmgNums.splice(i,1); }
 
   const remaining=900-gameTime;
-  if(remaining<=0){ stageClear(); return; }
-  const rm=Math.floor(remaining/60),rs=Math.floor(remaining%60);
-  document.getElementById('timer').textContent=String(rm).padStart(2,'0')+':'+String(rs).padStart(2,'0');
-  document.getElementById('timer').style.color=remaining<60?'#ff6b63':remaining<180?'#fad86a':'var(--c-text)';
+  // 15분(900초): 보스가 없으면 최종 보스 소환, 있으면 처치 대기
+  if(remaining<=0){
+    if(!activeBoss){
+      // 최종 보스가 아직 안 나왔으면 강제 스폰
+      if(!finalBossSpawned){
+        finalBossSpawned=true;
+        spawnFinalBoss();
+      } else {
+        // 최종 보스도 처치 완료 → 클리어
+        stageClear(); return;
+      }
+    }
+    // 최종 보스 처치 판정
+    if(finalBossSpawned && activeBoss && activeBoss.hp<=0){
+      stageClear(); return;
+    }
+  }
+  const rm=Math.max(0,Math.floor(remaining/60)),rs=Math.max(0,Math.floor(remaining%60));
+  document.getElementById('timer').textContent=remaining>0?(String(rm).padStart(2,'0')+':'+String(rs).padStart(2,'0')):'FINAL';
+  document.getElementById('timer').style.color=remaining<=0?'#ff0044':remaining<60?'#ff6b63':remaining<180?'#fad86a':'var(--c-text)';
 
   document.getElementById('hp').style.width=(player.hp/player.maxHp*100)+'%';
   document.getElementById('xp').style.width=(player.xp/player.xpNext*100)+'%';
@@ -2132,7 +2274,7 @@ function render(){
   if(player.invincible>0) ctx.globalAlpha=0.5+0.5*Math.sin(gameTime*20);
 
   // ── 방향 화살표 (타자일 때만, scale 적용 전 월드 좌표에서 그림)
-  if(player.isHunter){
+  if(player.isHunter || player.isGunner){
     const ang = player.aimAngle || 0;
     const arrowDist = 30;
     ctx.save();
@@ -2235,6 +2377,62 @@ function render(){
         ctx.strokeStyle='rgba(251,146,60,0.45)';ctx.lineWidth=2;ctx.setLineDash([3,3]);ctx.shadowBlur=0;
         ctx.beginPath();ctx.moveTo(4,8);ctx.lineTo(4,-12);ctx.stroke();
         ctx.setLineDash([]);
+      }
+      ctx.restore();
+    }
+  } else if(player.isGunner){
+    // 샷건맨: 군복 + 헬멧 + 샷건
+    const t = gameTime;
+    // 군복 몸통 (올리브 그린)
+    ctx.shadowColor='rgba(180,190,180,0.5)';ctx.shadowBlur=10;
+    ctx.fillStyle='#3a4a2a';
+    ctx.beginPath();ctx.ellipse(0,3,13,17,0,0,Math.PI*2);ctx.fill();
+    // 방탄조끼
+    ctx.fillStyle='#2a3520';
+    ctx.beginPath();ctx.moveTo(-10,0);ctx.lineTo(-10,14);ctx.lineTo(10,14);ctx.lineTo(10,0);ctx.lineTo(5,-6);ctx.lineTo(-5,-6);ctx.closePath();ctx.fill();
+    // 조끼 포켓
+    ctx.fillStyle='#222a18';ctx.fillRect(-9,2,7,5);ctx.fillRect(2,2,7,5);
+    // 벨트
+    ctx.fillStyle='#4a3a20';ctx.fillRect(-11,12,22,3);
+    ctx.fillStyle='#c8a030';ctx.fillRect(-3,11.5,6,4);
+    // 얼굴
+    ctx.shadowBlur=0;ctx.fillStyle='#c8a070';ctx.beginPath();ctx.ellipse(0,-6,6,7,0,0,Math.PI*2);ctx.fill();
+    // 군용 헬멧
+    ctx.fillStyle='#2e3b22';ctx.shadowColor='#aab8aa';ctx.shadowBlur=4;
+    ctx.beginPath();ctx.arc(0,-10,9,Math.PI,0);ctx.fill();
+    ctx.fillRect(-9,-10,18,4);
+    // 헬멧 챙
+    ctx.fillStyle='#252f1a';
+    ctx.beginPath();ctx.moveTo(-9,-8);ctx.lineTo(-12,-6);ctx.lineTo(12,-6);ctx.lineTo(9,-8);ctx.closePath();ctx.fill();
+    // 헬멧 스트랩
+    ctx.strokeStyle='#8a7050';ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.moveTo(-6,-5);ctx.lineTo(-4,-1);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(6,-5);ctx.lineTo(4,-1);ctx.stroke();
+    // 눈
+    ctx.shadowBlur=0;ctx.fillStyle='#111';
+    ctx.beginPath();ctx.arc(-2.5,-5.5,2,0,Math.PI*2);ctx.fill();
+    ctx.beginPath();ctx.arc(2.5,-5.5,2,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#d1d5db';
+    ctx.beginPath();ctx.arc(-2,-5,0.8,0,Math.PI*2);ctx.fill();
+    ctx.beginPath();ctx.arc(3,-5,0.8,0,Math.PI*2);ctx.fill();
+    // 샷건 (앞쪽으로 겨눔, 총구 방향 애니)
+    {
+      const shootAng = player.aimAngle * player.facing;
+      ctx.save();
+      ctx.rotate(shootAng);
+      // 총 몸체
+      ctx.fillStyle='#1a1a1a';ctx.shadowColor='#888';ctx.shadowBlur=4;
+      ctx.fillRect(8,-3,24,5);
+      // 총열 (위)
+      ctx.fillStyle='#2a2a2a';ctx.fillRect(8,-5,22,3);
+      // 총구
+      ctx.fillStyle='#333';ctx.fillRect(30,-4,4,7);
+      // 개머리판
+      ctx.fillStyle='#5a3a1a';ctx.fillRect(4,-2,6,4);
+      // 총구 화염 (발사 직후 깜빡임)
+      if(Math.sin(t*18)>0.6 && (player.weapons['shotgun']||player.weapons['minigun'])){
+        ctx.fillStyle='rgba(255,200,50,0.85)';ctx.shadowColor='#ff8800';ctx.shadowBlur=14;
+        ctx.beginPath();ctx.ellipse(35,0,7,4,0,0,Math.PI*2);ctx.fill();
       }
       ctx.restore();
     }
